@@ -18,12 +18,21 @@ import os
 #   plot_hist_flag - if user want to generate histograms
 #   plot_hist_path - relative path to where user wants histograms to be saved (must end with '\\'
 #######################################################################
-def black_box(predictions,targets, plot_hist_flag=False ,plot_hist_path='histograms\\'):
+def black_box(predictions,targets, train_time_end, plot_hist_flag=False ,plot_hist_path='histograms\\',window1=None):
 
     #define windows
-    window1 = [3000,3800]
-    window2 = [window1[1],4638]
+    if window1 is None:
+        if targets.shape[1] == 4779:
+            window1 = [4024,4400]
+        elif targets.shape[1] == 4638:
+            window1 = [3000, 3800]
+        else:
+            window1 = [train_time_end, train_time_end + (targets.shape[1] - train_time_end)//2]
 
+    if window1[1] != targets.shape[1]:
+        window2 = [window1[1], targets.shape[1]]
+    else:
+        window2 = [window1[1]-1, targets.shape[1]]
     ##### generate matrix according to windows + generate labels matrix #####
 
     # user predictions
@@ -97,7 +106,31 @@ def black_box(predictions,targets, plot_hist_flag=False ,plot_hist_path='histogr
     if plot_hist_flag:
         plot_hist(predictions,targets,window1[0],plot_hist_path)
 
-    return [accuracy_window_1, accuracy_window_2, total_accuracy, corr_window_1, corr_window_2, corr_total]
+    square_diff = (targets[:,:,2] - predictions) ** 2
+
+
+    relevant_mat = square_diff[:,:window1[0]]
+    relevant_tar = targets[:,:window1[0],2]
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(relevant_tar, 0), np.isnan(relevant_tar))))
+    train_rms_loss = np.average(relevant_mat[valid_idx])**0.5
+
+    relevant_mat = square_diff[:, window1[0]:]
+    relevant_tar = targets[:,window1[0]:,2]
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(relevant_tar, 0), np.isnan(relevant_tar))))
+    test_rms_loss = np.average(relevant_mat[valid_idx])**0.5
+
+    relevant_mat = square_diff[:, window1[0]:window1[1]]
+    relevant_tar = targets[:,window1[0]:window1[1],2]
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(relevant_tar, 0), np.isnan(relevant_tar))))
+    wind1_rms_loss = np.average(relevant_mat[valid_idx])**0.5
+
+    relevant_mat = square_diff[:, window2[0]:window2[1]]
+    relevant_tar = targets[:,window2[0]:window2[1],2]
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(relevant_tar, 0), np.isnan(relevant_tar))))
+    wind2_rms_loss = np.average(relevant_mat[valid_idx])**0.5
+
+    return [accuracy_window_1, accuracy_window_2, total_accuracy, corr_window_1, corr_window_2, corr_total,
+            train_rms_loss, test_rms_loss, wind1_rms_loss, wind2_rms_loss]
 
 
 
@@ -108,7 +141,7 @@ def black_box(predictions,targets, plot_hist_flag=False ,plot_hist_path='histogr
 #       two vectors of the same length
 ####################################################################
 def get_corr(pred_vec,score_vec):
-    valid_idx = ~np.isnan(score_vec)
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(score_vec, 0), np.isnan(score_vec))))
     if np.sum(valid_idx) ==0:
         return np.nan
 
@@ -135,7 +168,7 @@ def plot_hist(predictions,targets,test_time_start,path):
     test_pred = predictions[:,test_time_start:].flatten()
 
     fig_train = plt.figure()
-    valid_idx = ~np.isnan(train_score)
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(train_score, 0), np.isnan(train_score))))
     n, bins, patches = plt.hist([train_score[valid_idx], train_pred[valid_idx]], bins=100)
     plt.title("train set Histogram")
 
@@ -143,7 +176,7 @@ def plot_hist(predictions,targets,test_time_start,path):
     plt.savefig(hist_dir + file_name)
 
     fig_test = plt.figure()
-    valid_idx = ~np.isnan(test_score)
+    valid_idx = np.where(np.logical_not(np.logical_or(np.equal(test_score, 0), np.isnan(test_score))))
     n, bins, patches = plt.hist([test_score[valid_idx], test_pred[valid_idx]], bins=100)
     plt.title("test set Histogram")
 
